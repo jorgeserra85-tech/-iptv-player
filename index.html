@@ -38,6 +38,13 @@
   .switch input { width:20px; height:20px; accent-color:var(--accent); }
   .empty { color:var(--muted); text-align:center; padding:24px 0; }
   .hidden { display:none !important; }
+  .grow { display:flex; align-items:center; gap:6px; padding:8px; border:1px solid var(--line); border-radius:8px; margin-top:6px; background:var(--bg); }
+  .grow.off { opacity:.5; }
+  .grow .mv { width:38px; padding:8px 0; font-size:16px; background:transparent; color:var(--text); border:1px solid var(--line); }
+  .grow input[type=text] { padding:8px; font-size:15px; }
+  .grow .orig { color:var(--muted); font-size:11px; margin-top:2px; word-break:break-word; }
+  .grow .vis { width:22px; height:22px; accent-color:var(--accent); flex:none; }
+  .sticky { position:sticky; bottom:0; background:var(--bg); padding:10px 0; }
 </style>
 </head>
 <body>
@@ -72,6 +79,22 @@
     </div>
 
     <div id="list"></div>
+
+    <!-- Grupos de um servidor -->
+    <div id="groupsView" class="hidden">
+      <div class="card">
+        <div class="top">
+          <div><div class="prov-name" id="gTitle">Grupos</div>
+          <div class="prov-url">Use ▲▼ para ordenar. Desmarque o quadrado para esconder. Escreva um nome novo se quiser mudar o nome do grupo.</div></div>
+        </div>
+        <button class="ghost" id="gBack" style="width:100%;margin-top:12px">‹ Voltar aos servidores</button>
+      </div>
+      <div id="gList"></div>
+      <div class="sticky">
+        <button class="primary" id="gSave" style="margin-top:0">Guardar alterações</button>
+        <div class="msg" id="gMsg"></div>
+      </div>
+    </div>
     <button class="ghost" id="logoutBtn" style="width:100%;margin-top:12px">Sair do painel</button>
   </div>
 </div>
@@ -118,11 +141,13 @@ async function loadList() {
         <span class="badge ${p.active ? "on" : "off"}">${p.active ? "Visível" : "Escondido"}</span>
       </div>
       <div class="actions">
+        <button class="ghost" data-groups="${p.id}" data-name="${esc(p.name)}">Grupos</button>
         <button class="ghost" data-edit="${p.id}">Editar</button>
         <button class="ghost" data-toggle="${p.id}" data-active="${p.active}">${p.active ? "Esconder" : "Mostrar"}</button>
         <button class="danger" data-del="${p.id}" data-name="${esc(p.name)}">Apagar</button>
       </div>
     </div>`).join("");
+  list.querySelectorAll("[data-groups]").forEach(b => b.onclick = () => openGroups(b.dataset.groups, b.dataset.name));
   list.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => startEdit(data.find(p => p.id == b.dataset.edit)));
   list.querySelectorAll("[data-toggle]").forEach(b => b.onclick = async () => {
     const { error } = await db.from("providers").update({ active: b.dataset.active !== "true" }).eq("id", b.dataset.toggle);
@@ -161,6 +186,66 @@ $("saveBtn").onclick = async () => {
   if (error) return msg($("formMsg"), "Erro: " + error.message, true);
   msg($("formMsg"), editingId ? "Alterações guardadas ✓" : "Servidor adicionado ✓");
   resetForm(); loadList();
+};
+
+// ---------- Organizar grupos ----------
+let gRows = [], gProv = null;
+
+function showMain(show) {
+  $("formCard").classList.toggle("hidden", !show);
+  $("list").classList.toggle("hidden", !show);
+  $("logoutBtn").classList.toggle("hidden", !show);
+  $("groupsView").classList.toggle("hidden", show);
+}
+
+async function openGroups(id, name) {
+  gProv = id; $("gTitle").textContent = "Grupos de " + name; msg($("gMsg"), "");
+  showMain(false); window.scrollTo({ top: 0 });
+  $("gList").innerHTML = `<div class="empty">A carregar…</div>`;
+  const { data, error } = await db.from("group_settings").select("*").eq("provider_id", id).order("position").order("id");
+  if (error) { $("gList").innerHTML = `<div class="card msg err">Erro: ${esc(error.message)}</div>`; return; }
+  gRows = data;
+  renderGroups();
+}
+
+function renderGroups() {
+  if (!gRows.length) {
+    $("gList").innerHTML = `<div class="empty">Ainda não há grupos.<br>Os grupos aparecem aqui depois de alguém entrar na app com este servidor.</div>`;
+    return;
+  }
+  $("gList").innerHTML = gRows.map((g, i) => `
+    <div class="grow ${g.hidden ? "off" : ""}">
+      <input class="vis" type="checkbox" data-vis="${i}" ${g.hidden ? "" : "checked"} title="Visível na app">
+      <div style="flex:1;min-width:0">
+        <input type="text" data-ren="${i}" value="${esc(g.rename || "")}" placeholder="${esc(g.name)}">
+        ${g.rename ? `<div class="orig">Original: ${esc(g.name)}</div>` : ""}
+      </div>
+      <button class="mv" data-up="${i}" ${i === 0 ? "disabled" : ""}>▲</button>
+      <button class="mv" data-down="${i}" ${i === gRows.length - 1 ? "disabled" : ""}>▼</button>
+    </div>`).join("");
+  const L = $("gList");
+  L.querySelectorAll("[data-vis]").forEach(c => c.onchange = () => { gRows[c.dataset.vis].hidden = !c.checked; c.closest(".grow").classList.toggle("off", !c.checked); });
+  L.querySelectorAll("[data-ren]").forEach(t => t.oninput = () => { gRows[t.dataset.ren].rename = t.value.trim() || null; });
+  L.querySelectorAll("[data-up]").forEach(b => b.onclick = () => move(+b.dataset.up, -1));
+  L.querySelectorAll("[data-down]").forEach(b => b.onclick = () => move(+b.dataset.down, 1));
+}
+
+function move(i, d) {
+  const j = i + d; if (j < 0 || j >= gRows.length) return;
+  [gRows[i], gRows[j]] = [gRows[j], gRows[i]];
+  renderGroups();
+  const btn = $("gList").querySelector(`[data-${d < 0 ? "up" : "down"}="${j}"]`);
+  if (btn && !btn.disabled) btn.focus();
+}
+
+$("gBack").onclick = () => { showMain(true); loadList(); };
+$("gSave").onclick = async () => {
+  if (!gRows.length) return;
+  msg($("gMsg"), "A guardar…");
+  const rows = gRows.map((g, i) => ({ provider_id: g.provider_id, name: g.name, position: i, hidden: !!g.hidden, rename: g.rename || null }));
+  const { error } = await db.from("group_settings").upsert(rows, { onConflict: "provider_id,name" });
+  if (error) return msg($("gMsg"), "Erro: " + error.message, true);
+  msg($("gMsg"), "Guardado ✓ Os clientes veem as alterações na próxima vez que entrarem.");
 };
 
 refreshView();
