@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/apk",
+      "destination": "https://github.com/jorgeserra85-tech/-iptv-player/releases/download/app/eco_player.apk",
+      "permanent": false
+    }
+  ]
+}
