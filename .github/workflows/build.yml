@@ -2,6 +2,8 @@ name: Build APK
 on:
   push:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -11,14 +13,23 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      
       - name: Compilar
         run: |
           unzip -o IPTVPlayer.zip
           cd IPTVPlayer
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
+      - name: Preparar APK
+        run: cp IPTVPlayer/app/build/outputs/apk/release/app-release.apk eco_player.apk
       - uses: actions/upload-artifact@v4
         with:
           name: IPTVPlayer-apk
-          path: IPTVPlayer/app/build/outputs/apk/release/*.apk
+          path: eco_player.apk
+      - name: Publicar para download direto
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app
+          name: eco_player
+          body: Última versão da app eco_player.
+          files: eco_player.apk
+          make_latest: true
