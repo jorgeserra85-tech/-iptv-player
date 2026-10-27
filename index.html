@@ -9,6 +9,8 @@
 <style>
   :root { --bg:#121417; --card:#1E2126; --line:#2C3138; --accent:#3DDC97; --text:#ECEFF1; --muted:#8A939C; --danger:#FF6B6B; }
   * { box-sizing:border-box; }
+  html, body { overflow-x:hidden; -webkit-text-size-adjust:100%; }
+  input, button { min-width:0; font-family:inherit; }
   body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   .wrap { max-width:640px; margin:0 auto; padding:20px 16px 60px; }
   h1 { color:var(--accent); font-size:24px; margin:0 0 4px; }
@@ -27,7 +29,8 @@
   .row > * { flex:1; }
   .top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
   .prov-name { font-weight:700; font-size:17px; }
-  .prov-url { color:var(--muted); font-size:13px; word-break:break-all; margin-top:2px; }
+  .prov-url { color:var(--muted); font-size:13px; overflow-wrap:anywhere; margin-top:2px; }
+  .top > div { min-width:0; }
   .badge { font-size:12px; padding:3px 8px; border-radius:20px; white-space:nowrap; }
   .on { background:#1f3a2d; color:var(--accent); } .off { background:#3a2323; color:var(--danger); }
   .actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
@@ -40,7 +43,16 @@
   .hidden { display:none !important; }
   .grow { display:flex; align-items:center; gap:6px; padding:8px; border:1px solid var(--line); border-radius:8px; margin-top:6px; background:var(--bg); }
   .grow.off { opacity:.5; }
-  .grow .mv { width:38px; padding:8px 0; font-size:16px; background:transparent; color:var(--text); border:1px solid var(--line); }
+  .grow > div { flex:1; min-width:0; }
+  .grow .mv { flex:none; width:36px; padding:8px 0; font-size:15px; background:transparent; color:var(--text); border:1px solid var(--line); }
+  .grow .mv:disabled { opacity:.3; }
+  .grow .lock { font-size:14px; }
+  .grow .lock.on { border-color:var(--accent); background:#1f3a2d; }
+  .kinds { display:flex; gap:6px; margin-top:12px; }
+  .kinds button { flex:1; padding:9px 4px; font-size:14px; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:20px; }
+  .kinds button.on { background:var(--accent); color:#0b1a12; border-color:var(--accent); }
+  .grow .link { display:inline-block; margin-top:6px; padding:0; background:none; border:0; color:var(--accent); font-size:13px; font-weight:600; }
+  .grow .logo { width:34px; height:24px; object-fit:contain; flex:none; }
   .grow input[type=text] { padding:8px; font-size:15px; }
   .grow .orig { color:var(--muted); font-size:11px; margin-top:2px; word-break:break-word; }
   .grow .vis { width:22px; height:22px; accent-color:var(--accent); flex:none; }
@@ -80,12 +92,43 @@
 
     <div id="list"></div>
 
+    <div class="card" id="recCard">
+      <div class="prov-name">🔑 Código de recuperação do PIN</div>
+      <div class="prov-url">Se um cliente se esquecer do PIN, carrega em "Esqueci-me do PIN" na app e escreve este código. O PIN dele é apagado e pode criar outro. O código fica guardado de forma segura: nem a app o consegue ler.</div>
+      <div class="msg" id="recState" style="margin-top:8px"></div>
+      <label>Novo código (mínimo 6 caracteres)</label>
+      <input id="recCode" type="password" autocomplete="new-password">
+      <button class="primary" id="recSave">Guardar código</button>
+      <div class="msg" id="recMsg"></div>
+    </div>
+
+    <!-- Canais de um grupo -->
+    <div id="chView" class="hidden">
+      <div class="card">
+        <div class="top"><div>
+          <div class="prov-name" id="cTitle">Canais</div>
+          <div class="prov-url">Use ▲▼ para ordenar (⤒ põe no topo). Desmarque para esconder. Escreva um nome novo se quiser mudar o nome do canal. <b>🔒</b> = a app pede PIN para este canal.</div>
+        </div></div>
+        <button class="ghost" id="cBack" style="width:100%;margin-top:12px">‹ Voltar aos grupos</button>
+      </div>
+      <div id="cList"></div>
+      <div class="sticky">
+        <button class="primary" id="cSave" style="margin-top:0">Guardar alterações</button>
+        <div class="msg" id="cMsg"></div>
+      </div>
+    </div>
+
     <!-- Grupos de um servidor -->
     <div id="groupsView" class="hidden">
       <div class="card">
         <div class="top">
           <div><div class="prov-name" id="gTitle">Grupos</div>
-          <div class="prov-url">Use ▲▼ para ordenar. Desmarque o quadrado para esconder. Escreva um nome novo se quiser mudar o nome do grupo.</div></div>
+          <div class="prov-url">Use ▲▼ para ordenar. Desmarque o quadrado para esconder. Escreva um nome novo se quiser mudar o nome. <b>🔒</b> = a app pede PIN (cada cliente cria o seu PIN no aparelho).</div></div>
+        </div>
+        <div class="kinds">
+          <button data-kind="live" class="on">📺 TV</button>
+          <button data-kind="vod">🎬 Filmes</button>
+          <button data-kind="series">🎞 Séries</button>
         </div>
         <button class="ghost" id="gBack" style="width:100%;margin-top:12px">‹ Voltar aos servidores</button>
       </div>
@@ -114,7 +157,7 @@ async function refreshView() {
   $("loginView").classList.toggle("hidden", !!session);
   $("appView").classList.toggle("hidden", !session);
   $("who").textContent = session ? "Sessão: " + session.user.email : "Gestão de servidores da app";
-  if (session) loadList();
+  if (session) { loadList(); loadRecovery(); }
 }
 
 $("loginBtn").onclick = async () => {
@@ -188,29 +231,75 @@ $("saveBtn").onclick = async () => {
   resetForm(); loadList();
 };
 
+// ---------- Código de recuperação do PIN ----------
+async function sha256hex(t) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+async function loadRecovery() {
+  const { data, error } = await db.from("admin_settings").select("recovery_hash,updated_at").eq("id", 1).maybeSingle();
+  if (error) return msg($("recState"), "Falta correr o código SQL do código de recuperação no Supabase.", true);
+  msg($("recState"), data && data.recovery_hash
+    ? "✓ Código definido" + (data.updated_at ? " em " + new Date(data.updated_at).toLocaleDateString("pt-PT") : "")
+    : "Ainda não há código definido.");
+}
+$("recSave").onclick = async () => {
+  const code = $("recCode").value.trim();
+  if (code.length < 6) return msg($("recMsg"), "O código deve ter pelo menos 6 caracteres", true);
+  msg($("recMsg"), "A guardar…");
+  const hash = await sha256hex("eco|" + code);
+  const { error } = await db.from("admin_settings").upsert({ id: 1, recovery_hash: hash, updated_at: new Date().toISOString() });
+  if (error) return msg($("recMsg"), "Erro: " + error.message, true);
+  $("recCode").value = "";
+  msg($("recMsg"), "Código guardado ✓ Guarde-o num sítio seguro.");
+  loadRecovery();
+};
+
 // ---------- Organizar grupos ----------
 let gRows = [], gProv = null;
 
-function showMain(show) {
-  $("formCard").classList.toggle("hidden", !show);
-  $("list").classList.toggle("hidden", !show);
-  $("logoutBtn").classList.toggle("hidden", !show);
-  $("groupsView").classList.toggle("hidden", show);
+let gChannels = [];   // lista de canais enviada pela app: [{k, n, g, l}]
+
+function show(view) {   // "main" | "groups" | "channels"
+  $("formCard").classList.toggle("hidden", view !== "main");
+  $("list").classList.toggle("hidden", view !== "main");
+  $("recCard").classList.toggle("hidden", view !== "main");
+  $("logoutBtn").classList.toggle("hidden", view !== "main");
+  $("groupsView").classList.toggle("hidden", view !== "groups");
+  $("chView").classList.toggle("hidden", view !== "channels");
+  window.scrollTo({ top: 0 });
 }
+function showMain(v) { show(v ? "main" : "groups"); }
+
+let gKind = "live", gName = "";
+const KIND_NAMES = { live: "canais", vod: "filmes", series: "séries" };
+
+document.querySelectorAll("[data-kind]").forEach(b => b.onclick = () => {
+  gKind = b.dataset.kind;
+  document.querySelectorAll("[data-kind]").forEach(x => x.classList.toggle("on", x === b));
+  loadGroups();
+});
 
 async function openGroups(id, name) {
-  gProv = id; $("gTitle").textContent = "Grupos de " + name; msg($("gMsg"), "");
+  gProv = id; gName = name; $("gTitle").textContent = "Categorias de " + name;
   showMain(false); window.scrollTo({ top: 0 });
+  loadGroups();
+}
+
+async function loadGroups() {
+  const id = gProv; msg($("gMsg"), "");
   $("gList").innerHTML = `<div class="empty">A carregar…</div>`;
-  const { data, error } = await db.from("group_settings").select("*").eq("provider_id", id).order("position").order("id");
+  const { data, error } = await db.from("group_settings").select("*").eq("provider_id", id).eq("kind", gKind).order("position").order("id");
   if (error) { $("gList").innerHTML = `<div class="card msg err">Erro: ${esc(error.message)}</div>`; return; }
   gRows = data;
+  const pc = await db.from("provider_channels").select("data").eq("provider_id", id).maybeSingle();
+  gChannels = (pc.data && Array.isArray(pc.data.data)) ? pc.data.data : [];
   renderGroups();
 }
 
 function renderGroups() {
   if (!gRows.length) {
-    $("gList").innerHTML = `<div class="empty">Ainda não há grupos.<br>Os grupos aparecem aqui depois de alguém entrar na app com este servidor.</div>`;
+    $("gList").innerHTML = `<div class="empty">Ainda não há categorias de ${KIND_NAMES[gKind]}.<br>Aparecem aqui depois de alguém abrir ${gKind === "live" ? "a app" : "o separador " + (gKind === "vod" ? "Filmes" : "Séries") + " na app"} com este servidor.</div>`;
     return;
   }
   $("gList").innerHTML = gRows.map((g, i) => `
@@ -219,13 +308,20 @@ function renderGroups() {
       <div style="flex:1;min-width:0">
         <input type="text" data-ren="${i}" value="${esc(g.rename || "")}" placeholder="${esc(g.name)}">
         ${g.rename ? `<div class="orig">Original: ${esc(g.name)}</div>` : ""}
+        ${gKind === "live" ? `<button class="link" data-ch="${i}">Canais (${gChannels.filter(c => c.g === g.name).length}) ›</button>` : ""}
       </div>
       <button class="mv" data-up="${i}" ${i === 0 ? "disabled" : ""}>▲</button>
       <button class="mv" data-down="${i}" ${i === gRows.length - 1 ? "disabled" : ""}>▼</button>
+      <button class="mv lock ${g.locked ? "on" : ""}" data-lock="${i}" title="Pedir PIN">${g.locked ? "🔒" : "🔓"}</button>
     </div>`).join("");
   const L = $("gList");
   L.querySelectorAll("[data-vis]").forEach(c => c.onchange = () => { gRows[c.dataset.vis].hidden = !c.checked; c.closest(".grow").classList.toggle("off", !c.checked); });
   L.querySelectorAll("[data-ren]").forEach(t => t.oninput = () => { gRows[t.dataset.ren].rename = t.value.trim() || null; });
+  L.querySelectorAll("[data-ch]").forEach(b => b.onclick = () => openChannels(gRows[b.dataset.ch]));
+  L.querySelectorAll("[data-lock]").forEach(b => b.onclick = () => {
+    const g = gRows[b.dataset.lock]; g.locked = !g.locked;
+    b.classList.toggle("on", g.locked); b.textContent = g.locked ? "🔒" : "🔓";
+  });
   L.querySelectorAll("[data-up]").forEach(b => b.onclick = () => move(+b.dataset.up, -1));
   L.querySelectorAll("[data-down]").forEach(b => b.onclick = () => move(+b.dataset.down, 1));
 }
@@ -242,10 +338,88 @@ $("gBack").onclick = () => { showMain(true); loadList(); };
 $("gSave").onclick = async () => {
   if (!gRows.length) return;
   msg($("gMsg"), "A guardar…");
-  const rows = gRows.map((g, i) => ({ provider_id: g.provider_id, name: g.name, position: i, hidden: !!g.hidden, rename: g.rename || null }));
-  const { error } = await db.from("group_settings").upsert(rows, { onConflict: "provider_id,name" });
+  const rows = gRows.map((g, i) => ({ provider_id: g.provider_id, kind: gKind, name: g.name, position: i, hidden: !!g.hidden, rename: g.rename || null, locked: !!g.locked }));
+  const { error } = await db.from("group_settings").upsert(rows, { onConflict: "provider_id,kind,name" });
   if (error) return msg($("gMsg"), "Erro: " + error.message, true);
   msg($("gMsg"), "Guardado ✓ Os clientes veem as alterações na próxima vez que entrarem.");
+};
+
+// ---------- Organizar canais de um grupo ----------
+let cRows = [], cGroup = null;
+
+async function loadAll(q) {   // lê todas as linhas (o Supabase devolve no máx. 1000 de cada vez)
+  let out = [], from = 0;
+  for (;;) {
+    const { data, error } = await q().range(from, from + 999);
+    if (error) throw error;
+    out = out.concat(data); if (data.length < 1000) return out; from += 1000;
+  }
+}
+
+async function openChannels(g) {
+  cGroup = g; msg($("cMsg"), "");
+  $("cTitle").textContent = "Canais de " + (g.rename || g.name);
+  show("channels");
+  const list = gChannels.filter(c => c.g === g.name);
+  if (!list.length) {
+    $("cList").innerHTML = `<div class="empty">Ainda não há lista de canais.<br>Ela aparece depois de alguém entrar na app (versão nova) com este servidor.</div>`;
+    cRows = []; return;
+  }
+  $("cList").innerHTML = `<div class="empty">A carregar…</div>`;
+  let settings = [];
+  try {
+    settings = await loadAll(() => db.from("channel_settings").select("channel_key,position,hidden,rename,locked").eq("provider_id", gProv).order("id"));
+  } catch (e) { $("cList").innerHTML = `<div class="card msg err">Erro: ${esc(e.message)}</div>`; return; }
+  const S = new Map(settings.map(s => [s.channel_key, s]));
+  cRows = list.map((c, i) => {
+    const s = S.get(String(c.k)) || {};
+    return { key: String(c.k), name: c.n, logo: c.l, idx: i, position: s.position ?? null, hidden: !!s.hidden, rename: s.rename || null, locked: !!s.locked };
+  }).sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9) || a.idx - b.idx);
+  renderChannels();
+}
+
+function renderChannels() {
+  $("cList").innerHTML = cRows.map((c, i) => `
+    <div class="grow ${c.hidden ? "off" : ""}">
+      <input class="vis" type="checkbox" data-cvis="${i}" ${c.hidden ? "" : "checked"} title="Visível na app">
+      ${c.logo ? `<img class="logo" src="${esc(c.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}
+      <div>
+        <input type="text" data-cren="${i}" value="${esc(c.rename || "")}" placeholder="${esc(c.name)}">
+        ${c.rename ? `<div class="orig">Original: ${esc(c.name)}</div>` : ""}
+      </div>
+      <button class="mv" data-ctop="${i}" ${i === 0 ? "disabled" : ""} title="Pôr no topo">⤒</button>
+      <button class="mv" data-cup="${i}" ${i === 0 ? "disabled" : ""}>▲</button>
+      <button class="mv" data-cdown="${i}" ${i === cRows.length - 1 ? "disabled" : ""}>▼</button>
+      <button class="mv lock ${c.locked ? "on" : ""}" data-clock="${i}" title="Pedir PIN">${c.locked ? "🔒" : "🔓"}</button>
+    </div>`).join("");
+  const L = $("cList");
+  L.querySelectorAll("[data-cvis]").forEach(c => c.onchange = () => { cRows[c.dataset.cvis].hidden = !c.checked; c.closest(".grow").classList.toggle("off", !c.checked); });
+  L.querySelectorAll("[data-cren]").forEach(t => t.oninput = () => { cRows[t.dataset.cren].rename = t.value.trim() || null; });
+  L.querySelectorAll("[data-cup]").forEach(b => b.onclick = () => cMove(+b.dataset.cup, +b.dataset.cup - 1));
+  L.querySelectorAll("[data-cdown]").forEach(b => b.onclick = () => cMove(+b.dataset.cdown, +b.dataset.cdown + 1));
+  L.querySelectorAll("[data-ctop]").forEach(b => b.onclick = () => cMove(+b.dataset.ctop, 0));
+  L.querySelectorAll("[data-clock]").forEach(b => b.onclick = () => {
+    const c = cRows[b.dataset.clock]; c.locked = !c.locked;
+    b.classList.toggle("on", c.locked); b.textContent = c.locked ? "🔒" : "🔓";
+  });
+}
+
+function cMove(i, j) {
+  if (j < 0 || j >= cRows.length || i === j) return;
+  const [r] = cRows.splice(i, 1); cRows.splice(j, 0, r);
+  const y = window.scrollY; renderChannels(); window.scrollTo({ top: y });
+}
+
+$("cBack").onclick = () => show("groups");
+$("cSave").onclick = async () => {
+  if (!cRows.length) return;
+  msg($("cMsg"), "A guardar…");
+  const rows = cRows.map((c, i) => ({ provider_id: +gProv, channel_key: c.key, position: i, hidden: c.hidden, rename: c.rename, locked: !!c.locked }));
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from("channel_settings").upsert(rows.slice(i, i + 500), { onConflict: "provider_id,channel_key" });
+    if (error) return msg($("cMsg"), "Erro: " + error.message, true);
+  }
+  msg($("cMsg"), "Guardado ✓ Os clientes veem as alterações na próxima vez que entrarem.");
 };
 
 refreshView();
