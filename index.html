@@ -43,7 +43,7 @@
 <body>
 <div class="wrap">
   <h1>Painel IPTV</h1>
-  <div class="sub" id="who">Gestão de fornecedores da app</div>
+  <div class="sub" id="who">Gestão de servidores da app</div>
 
   <!-- Login -->
   <div id="loginView" class="card hidden">
@@ -58,10 +58,10 @@
   <!-- Painel -->
   <div id="appView" class="hidden">
     <div class="card" id="formCard">
-      <div class="prov-name" id="formTitle">Adicionar fornecedor</div>
+      <div class="prov-name" id="formTitle">Adicionar servidor</div>
       <label>Nome que o cliente vê na app</label>
-      <input id="fName" type="text" placeholder="ex.: Fornecedor 1">
-      <label>Endereço do servidor (Xtream)</label>
+      <input id="fName" type="text" placeholder="ex.: Servidor 1">
+      <label>Endereço (Xtream)</label>
       <input id="fUrl" type="text" placeholder="ex.: http://servidor.com:8080" autocapitalize="off" autocorrect="off">
       <label>Ordem na lista (número menor aparece primeiro)</label>
       <input id="fPos" type="number" value="0">
@@ -90,7 +90,7 @@ async function refreshView() {
   const { data: { session } } = await db.auth.getSession();
   $("loginView").classList.toggle("hidden", !!session);
   $("appView").classList.toggle("hidden", !session);
-  $("who").textContent = session ? "Sessão: " + session.user.email : "Gestão de fornecedores da app";
+  $("who").textContent = session ? "Sessão: " + session.user.email : "Gestão de servidores da app";
   if (session) loadList();
 }
 
@@ -107,7 +107,7 @@ async function loadList() {
   const { data, error } = await db.from("providers").select("*").order("position").order("name");
   const list = $("list");
   if (error) { list.innerHTML = `<div class="card msg err">Erro: ${esc(error.message)}</div>`; return; }
-  if (!data.length) { list.innerHTML = `<div class="empty">Ainda não há fornecedores. Adiciona o primeiro acima.</div>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="empty">Ainda não há servidores. Adiciona o primeiro acima.</div>`; return; }
   list.innerHTML = data.map(p => `
     <div class="card">
       <div class="top">
@@ -144,7 +144,7 @@ function startEdit(p) {
 }
 function resetForm() {
   editingId = null;
-  $("formTitle").textContent = "Adicionar fornecedor";
+  $("formTitle").textContent = "Adicionar servidor";
   $("fName").value = ""; $("fUrl").value = ""; $("fPos").value = 0; $("fActive").checked = true;
   $("cancelBtn").classList.add("hidden");
 }
@@ -159,7 +159,7 @@ $("saveBtn").onclick = async () => {
   const q = editingId ? db.from("providers").update(row).eq("id", editingId) : db.from("providers").insert(row);
   const { error } = await q;
   if (error) return msg($("formMsg"), "Erro: " + error.message, true);
-  msg($("formMsg"), editingId ? "Alterações guardadas ✓" : "Fornecedor adicionado ✓");
+  msg($("formMsg"), editingId ? "Alterações guardadas ✓" : "Servidor adicionado ✓");
   resetForm(); loadList();
 };
 
