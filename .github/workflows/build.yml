@@ -19,8 +19,13 @@ jobs:
           cd IPTVPlayer
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-      - name: Preparar APK
-        run: cp IPTVPlayer/app/build/outputs/apk/release/app-release.apk eco_player.apk
+      - name: Preparar APK e versão
+        run: |
+          cp IPTVPlayer/app/build/outputs/apk/release/app-release.apk eco_player.apk
+          VC=$(grep -oP 'versionCode = \K[0-9]+' IPTVPlayer/app/build.gradle.kts)
+          VN=$(grep -oP 'versionName = "\K[^"]+' IPTVPlayer/app/build.gradle.kts)
+          echo "{\"versionCode\": $VC, \"versionName\": \"$VN\"}" > version.json
+          cat version.json
       - uses: actions/upload-artifact@v4
         with:
           name: IPTVPlayer-apk
@@ -31,5 +36,7 @@ jobs:
           tag_name: app
           name: eco_player
           body: Última versão da app eco_player.
-          files: eco_player.apk
+          files: |
+            eco_player.apk
+            version.json
           make_latest: true
