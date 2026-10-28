@@ -48,6 +48,16 @@
   .grow .mv:disabled { opacity:.3; }
   .grow .lock { font-size:14px; }
   .grow .lock.on { border-color:var(--accent); background:#1f3a2d; }
+  .dev { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--line); }
+  .dev:first-of-type { border-top:0; }
+  .dot { width:10px; height:10px; border-radius:50%; margin-top:6px; flex:none; background:#55606b; }
+  .dot.on { background:var(--accent); box-shadow:0 0 0 3px #1f3a2d; }
+  .dev .who { font-weight:700; }
+  .dev .meta { color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+  .dev .watch { font-size:14px; margin-top:2px; overflow-wrap:anywhere; }
+  .dev .del { margin-left:auto; padding:6px 10px; font-size:12px; flex:none; }
+  .srv { font-size:13px; padding:6px 10px; border-radius:16px; border:1px solid var(--line); background:transparent; color:var(--text); }
+  .srv.on { background:var(--accent); color:#0b1a12; border-color:var(--accent); }
   .kinds { display:flex; gap:6px; margin-top:12px; }
   .kinds button { flex:1; padding:9px 4px; font-size:14px; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:20px; }
   .kinds button.on { background:var(--accent); color:#0b1a12; border-color:var(--accent); }
@@ -91,6 +101,17 @@
     </div>
 
     <div id="list"></div>
+
+    <div class="card" id="devCard">
+      <div class="top">
+        <div><div class="prov-name">📱 Utilizadores</div>
+        <div class="prov-url" id="devSummary">A carregar…</div></div>
+        <button class="ghost" id="devRefresh" style="padding:8px 12px;font-size:13px">Atualizar</button>
+      </div>
+      <div id="devByServer" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
+      <div class="switch"><input id="devOnlyOn" type="checkbox"> <span>Mostrar só quem está ligado agora</span></div>
+      <div id="devList" style="margin-top:8px"></div>
+    </div>
 
     <div class="card" id="recCard">
       <div class="prov-name">🔑 Código de recuperação do PIN</div>
@@ -157,7 +178,7 @@ async function refreshView() {
   $("loginView").classList.toggle("hidden", !!session);
   $("appView").classList.toggle("hidden", !session);
   $("who").textContent = session ? "Sessão: " + session.user.email : "Gestão de servidores da app";
-  if (session) { loadList(); loadRecovery(); }
+  if (session) { loadList(); loadRecovery(); loadDevices(); }
 }
 
 $("loginBtn").onclick = async () => {
@@ -231,6 +252,62 @@ $("saveBtn").onclick = async () => {
   resetForm(); loadList();
 };
 
+// ---------- Utilizadores (quem está a usar a app) ----------
+const ONLINE_MS = 3 * 60 * 1000;   // ligado = sinal nos últimos 3 minutos
+let devRows = [];
+let devServer = null;   // filtro por servidor (null = todos)
+
+function ago(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return "agora mesmo";
+  if (s < 3600) return "há " + Math.round(s / 60) + " min";
+  if (s < 86400) return "há " + Math.round(s / 3600) + " h";
+  return "há " + Math.round(s / 86400) + " dias";
+}
+
+async function loadDevices() {
+  const { data, error } = await db.from("devices").select("*").order("last_seen", { ascending: false }).limit(1000);
+  if (error) { $("devSummary").textContent = "Falta correr o código SQL dos utilizadores no Supabase."; $("devList").innerHTML = ""; return; }
+  devRows = data; renderDevices();
+}
+
+function renderDevices() {
+  const now = Date.now();
+  const isOn = d => now - new Date(d.last_seen).getTime() < ONLINE_MS;
+  const on = devRows.filter(isOn).length;
+  $("devSummary").textContent = `${on} ligado${on === 1 ? "" : "s"} agora · ${devRows.length} aparelho${devRows.length === 1 ? "" : "s"} no total`;
+  // resumo por servidor: ligados agora / total
+  const by = {};
+  devRows.forEach(d => { const k = d.provider_name || "—"; by[k] = by[k] || { on: 0, all: 0 }; by[k].all++; if (isOn(d)) by[k].on++; });
+  const names = Object.keys(by).sort();
+  if (devServer && !by[devServer]) devServer = null;
+  $("devByServer").innerHTML = (names.length > 1 ? `<button class="srv ${devServer ? "" : "on"}" data-srv="">Todos</button>` : "") +
+    names.map(n => `<button class="srv ${devServer === n ? "on" : ""}" data-srv="${esc(n)}">${esc(n)} · 🟢 ${by[n].on} / ${by[n].all}</button>`).join("");
+  $("devByServer").querySelectorAll("[data-srv]").forEach(b => b.onclick = () => { devServer = b.dataset.srv || null; renderDevices(); });
+
+  let list = $("devOnlyOn").checked ? devRows.filter(isOn) : devRows;
+  if (devServer) list = list.filter(d => (d.provider_name || "—") === devServer);
+  if (!list.length) { $("devList").innerHTML = `<div class="empty">${devRows.length ? "Ninguém ligado neste momento." : "Ainda ninguém usou a versão nova da app."}</div>`; return; }
+  $("devList").innerHTML = list.map(d => `
+    <div class="dev">
+      <span class="dot ${isOn(d) ? "on" : ""}"></span>
+      <div style="min-width:0">
+        <div class="who">${esc(d.username || "—")} <span class="meta">@ ${esc(d.provider_name || "")}</span></div>
+        <div class="watch">${isOn(d) ? "▶ " + esc(d.watching || "Na app") : "Visto " + ago(d.last_seen) + (d.watching ? " · " + esc(d.watching) : "")}</div>
+        <div class="meta">${esc(d.model || "")} · Android ${esc(d.android || "?")} · app v${esc(d.app_version || "?")}</div>
+      </div>
+      <button class="danger del" data-dev="${esc(d.device_id)}" title="Apagar da lista">✕</button>
+    </div>`).join("");
+  $("devList").querySelectorAll("[data-dev]").forEach(b => b.onclick = async () => {
+    if (!confirm("Apagar este aparelho da lista? (volta a aparecer se a app for usada outra vez)")) return;
+    const { error } = await db.from("devices").delete().eq("device_id", b.dataset.dev);
+    if (error) alert("Erro: " + error.message); else loadDevices();
+  });
+}
+$("devRefresh").onclick = loadDevices;
+$("devOnlyOn").onchange = renderDevices;
+setInterval(() => { if (!$("devCard").classList.contains("hidden") && !$("appView").classList.contains("hidden")) loadDevices(); }, 30000);
+
 // ---------- Código de recuperação do PIN ----------
 async function sha256hex(t) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
@@ -264,6 +341,7 @@ function show(view) {   // "main" | "groups" | "channels"
   $("formCard").classList.toggle("hidden", view !== "main");
   $("list").classList.toggle("hidden", view !== "main");
   $("recCard").classList.toggle("hidden", view !== "main");
+  $("devCard").classList.toggle("hidden", view !== "main");
   $("logoutBtn").classList.toggle("hidden", view !== "main");
   $("groupsView").classList.toggle("hidden", view !== "groups");
   $("chView").classList.toggle("hidden", view !== "channels");
