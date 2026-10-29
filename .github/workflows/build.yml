@@ -14,9 +14,18 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Compilar
+        env:
+          ECO_KEYSTORE_B64: ${{ secrets.ECO_KEYSTORE_B64 }}
+          ECO_KS_PASS: ${{ secrets.ECO_KS_PASS }}
         run: |
+          if [ -z "$ECO_KEYSTORE_B64" ] || [ -z "$ECO_KS_PASS" ]; then
+            echo "::error::Faltam os Secrets ECO_KEYSTORE_B64 e ECO_KS_PASS (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
           unzip -o IPTVPlayer.zip
           cd IPTVPlayer
+          echo "$ECO_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/eco.keystore"
+          export ECO_KEYSTORE_FILE="$RUNNER_TEMP/eco.keystore"
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
       - name: Preparar APK e versão
