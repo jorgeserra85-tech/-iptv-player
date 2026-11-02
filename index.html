@@ -172,6 +172,11 @@
         <button class="ghost" id="hBack" style="width:100%;margin-top:12px">‹ Voltar</button>
       </div>
       <div class="card">
+        <div class="top"><div class="prov-name">📋 Diagnóstico</div>
+          <button class="primary" id="hReport" style="margin-top:0;padding:6px 10px;font-size:12px">⤓ Pedir relatório agora</button></div>
+        <div id="hDiag" class="prov-url" style="margin-top:8px">—</div>
+      </div>
+      <div class="card">
         <div class="prov-name">Ações</div>
         <div class="actions">
           <button class="ghost" id="hReload">🔄 Recarregar lista</button>
@@ -477,6 +482,25 @@ async function openHelp(id) {
     helpChannels = (pc.data && Array.isArray(pc.data.data)) ? pc.data.data : [];
   }
   renderHelpChannels();
+  renderDiag();
+}
+
+function renderDiag() {
+  const d = helpDev || {};
+  const parts = [];
+  parts.push(d.speed_mbps != null ? `📶 Velocidade: ${d.speed_mbps < 0 ? "não foi possível medir" : Number(d.speed_mbps).toFixed(1) + " Mbps"}${d.speed_at ? " (" + ago(d.speed_at) + ")" : ""}` : "📶 Velocidade: ainda sem medição");
+  if (d.last_error) parts.push(`⚠️ Último erro: ${esc(d.last_error)} (${ago(d.last_error_at)})`);
+  const ev = (d.diag && Array.isArray(d.diag.events)) ? d.diag.events.slice().reverse() : [];
+  if (ev.length) {
+    parts.push("<b>Histórico:</b>");
+    ev.forEach(e => {
+      const when = new Date(e.t).toLocaleString("pt-PT");
+      const icon = e.k === "erro" ? "⚠️" : e.k === "abriu" ? "▶" : "•";
+      parts.push(`${icon} ${esc(e.m || "")} <span style="opacity:.6">(${when})</span>`);
+    });
+  }
+  if (d.diag && d.diag.fmt) parts.push(`Formato de vídeo usado: ${esc(d.diag.fmt)}`);
+  $("hDiag").innerHTML = parts.join("<br>");
 }
 function renderHelpChannels() {
   const q = $("hSearch").value.trim().toLowerCase();
@@ -495,6 +519,20 @@ async function sendCmd(command, payload, label) {
   if (error) return msg($("hMsg"), "Erro: " + error.message + (error.message.includes("device_commands") ? " (falta correr o SQL da assistência)" : ""), true);
   msg($("hMsg"), "✓ Enviado: " + label);
 }
+$("hReport").onclick = async () => {
+  const on = Date.now() - new Date(helpDev.last_seen).getTime() < ONLINE_MS;
+  await sendCmd("report", {}, on ? "A pedir relatório… chega em ~15s" : "Pedido guardado (chega quando o cliente abrir a app)");
+  if (!on) return;
+  $("hDiag").innerHTML = "⏳ A aguardar o relatório do aparelho…";
+  let tries = 0;
+  const timer = setInterval(async () => {
+    tries++;
+    const before = helpDev.speed_at;
+    const { data } = await db.from("devices").select("*").eq("device_id", helpDev.device_id).maybeSingle();
+    if (data) { helpDev = data; renderDiag(); }
+    if ((data && data.speed_at !== before) || tries >= 8) { clearInterval(timer); loadDevices(); }
+  }, 4000);
+};
 $("hSearch").oninput = renderHelpChannels;
 $("hBack").onclick = () => { show("main"); loadDevices(); };
 $("hReload").onclick = () => sendCmd("reload", {}, "Recarregar lista de canais");
