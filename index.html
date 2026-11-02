@@ -120,6 +120,7 @@
         <div class="prov-url" id="devSummary">A carregar…</div></div>
         <button class="ghost" id="devRefresh" style="padding:8px 12px;font-size:13px">Atualizar</button>
       </div>
+      <input id="devFind" type="text" inputmode="search" placeholder="🔎 Código de assistência ou utilizador" style="margin-top:10px">
       <div id="devByServer" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
       <div class="switch"><input id="devOnlyOn" type="checkbox"> <span>Mostrar só quem está ligado agora</span></div>
       <div id="devList" style="margin-top:8px"></div>
@@ -163,6 +164,61 @@
       </div>
     </div>
 
+    <!-- Assistência à distância a um aparelho -->
+    <div id="helpView" class="hidden">
+      <div class="card">
+        <div class="prov-name" id="hTitle">🛠 Assistência</div>
+        <div class="prov-url" id="hInfo"></div>
+        <button class="ghost" id="hBack" style="width:100%;margin-top:12px">‹ Voltar</button>
+      </div>
+      <div class="card">
+        <div class="prov-name">Ações</div>
+        <div class="actions">
+          <button class="ghost" id="hReload">🔄 Recarregar lista</button>
+          <button class="ghost" id="hUpdate">⟳ Atualizar app</button>
+          <button class="ghost" id="hSpeed">📶 Testar velocidade</button>
+          <button class="danger" id="hPin">🔓 Apagar PIN</button>
+        </div>
+        <label>Mensagem só para este aparelho</label>
+        <textarea id="hText" maxlength="1000" placeholder="ex.: Já resolvemos, experimente outra vez."></textarea>
+        <button class="primary" id="hSend">Enviar mensagem</button>
+        <div class="msg" id="hMsg"></div>
+      </div>
+      <div class="card">
+        <div class="prov-name">▶ Abrir um canal neste aparelho</div>
+        <input id="hSearch" type="text" placeholder="Pesquisar canal…" autocapitalize="off" style="margin-top:8px">
+        <div id="hChannels" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Editar um grupo personalizado -->
+    <div id="cgView" class="hidden">
+      <div class="card">
+        <div class="prov-name" id="cgTitle">Grupo personalizado</div>
+        <label>Nome do grupo</label>
+        <input id="cgName" type="text" maxlength="100" placeholder="ex.: ⚽ Desporto PT">
+        <div class="switch"><input id="cgActive" type="checkbox" checked> <span>Visível na app</span></div>
+        <button class="ghost" id="cgBack" style="width:100%;margin-top:12px">‹ Voltar às categorias</button>
+      </div>
+      <div class="card">
+        <div class="prov-name">Canais no grupo (<span id="cgCount">0</span>)</div>
+        <div class="prov-url">Use ▲▼ para ordenar e ✕ para tirar.</div>
+        <div id="cgSel" style="margin-top:6px"></div>
+      </div>
+      <div class="card">
+        <div class="prov-name">Adicionar canais</div>
+        <label>Pesquisar</label>
+        <input id="cgSearch" type="text" placeholder="ex.: sport, rtp, cnn…" autocapitalize="off">
+        <label>Grupo do servidor</label>
+        <select id="cgFrom"></select>
+        <div id="cgAvail" style="margin-top:8px"></div>
+      </div>
+      <div class="sticky">
+        <button class="primary" id="cgSave" style="margin-top:0">Guardar grupo</button>
+        <div class="msg" id="cgMsg"></div>
+      </div>
+    </div>
+
     <!-- Grupos de um servidor -->
     <div id="groupsView" class="hidden">
       <div class="card">
@@ -176,6 +232,14 @@
           <button data-kind="series">🎞 Séries</button>
         </div>
         <button class="ghost" id="gBack" style="width:100%;margin-top:12px">‹ Voltar aos servidores</button>
+      </div>
+      <div class="card" id="cgCard">
+        <div class="top"><div>
+          <div class="prov-name">⭐ Grupos personalizados</div>
+          <div class="prov-url">Junta canais à tua escolha num grupo novo. Aparece no topo da lista na app. Os canais continuam também nos grupos originais.</div>
+        </div></div>
+        <div id="cgList" style="margin-top:8px"></div>
+        <button class="primary" id="cgNew">+ Criar grupo</button>
       </div>
       <div id="gList"></div>
       <div class="sticky">
@@ -313,6 +377,8 @@ function renderDevices() {
 
   let list = $("devOnlyOn").checked ? devRows.filter(isOn) : devRows;
   if (devServer) list = list.filter(d => (d.provider_name || "—") === devServer);
+  const find = $("devFind").value.trim().toLowerCase();
+  if (find) list = list.filter(d => (d.assist_code || "").includes(find) || (d.username || "").toLowerCase().includes(find));
   if (!list.length) { $("devList").innerHTML = `<div class="empty">${devRows.length ? "Ninguém ligado neste momento." : "Ainda ninguém usou a versão nova da app."}</div>`; return; }
   $("devList").innerHTML = list.map(d => `
     <div class="dev">
@@ -322,8 +388,12 @@ function renderDevices() {
           ${expBadge(d.exp_date)} ${d.blocked ? `<span class="blk">⛔ Bloqueado</span>` : ""}</div>
         <div class="watch">${isOn(d) ? "▶ " + esc(d.watching || "Na app") : "Visto " + ago(d.last_seen) + (d.watching ? " · " + esc(d.watching) : "")}</div>
         <div class="meta">${esc(d.model || "")} · Android ${esc(d.android || "?")} · app v${esc(d.app_version || "?")}</div>
+        <div class="meta">${d.assist_code ? "🔢 Código <b>" + esc(d.assist_code) + "</b>" : ""}
+          ${d.speed_mbps != null ? " · 📶 " + (d.speed_mbps < 0 ? "velocidade: falhou" : Number(d.speed_mbps).toFixed(1) + " Mbps") + " (" + ago(d.speed_at) + ")" : ""}</div>
+        ${d.last_error ? `<div class="meta" style="color:#FFB4B4">⚠️ ${esc(d.last_error)} (${ago(d.last_error_at)})</div>` : ""}
       </div>
       <div class="acts">
+        <button class="primary" style="margin-top:0;padding:6px 10px;font-size:12px" data-help="${esc(d.device_id)}">🛠 Assistência</button>
         <button class="${d.blocked ? "ghost" : "danger"}" data-blk="${esc(d.device_id)}" data-val="${d.blocked ? "0" : "1"}">${d.blocked ? "Desbloquear" : "Bloquear"}</button>
         <button class="ghost" data-dev="${esc(d.device_id)}" title="Apagar da lista">Apagar</button>
       </div>
@@ -387,6 +457,54 @@ $("annSend").onclick = async () => {
 };
 
 $("devRefresh").onclick = loadDevices;
+$("devFind").oninput = renderDevices;
+
+// ---------- Assistência à distância ----------
+let helpDev = null, helpChannels = [];
+document.addEventListener("click", ev => { const b = ev.target.closest("[data-help]"); if (b) openHelp(b.dataset.help); });
+
+async function openHelp(id) {
+  helpDev = devRows.find(d => d.device_id === id); if (!helpDev) return;
+  $("hTitle").textContent = `🛠 Assistência — ${helpDev.username || "?"} @ ${helpDev.provider_name || ""}`;
+  $("hInfo").innerHTML = `${esc(helpDev.model || "")} · app v${esc(helpDev.app_version || "?")}` +
+    (helpDev.assist_code ? ` · código <b>${esc(helpDev.assist_code)}</b>` : "") +
+    `<br>${Date.now() - new Date(helpDev.last_seen).getTime() < ONLINE_MS ? "🟢 Ligado agora — os pedidos chegam em ~15 segundos" : "⚪ Desligado — os pedidos ficam à espera até 10 minutos"}`;
+  msg($("hMsg"), ""); $("hSearch").value = ""; $("hText").value = "";
+  show("help");
+  helpChannels = [];
+  if (helpDev.provider_id) {
+    const pc = await db.from("provider_channels").select("data").eq("provider_id", helpDev.provider_id).maybeSingle();
+    helpChannels = (pc.data && Array.isArray(pc.data.data)) ? pc.data.data : [];
+  }
+  renderHelpChannels();
+}
+function renderHelpChannels() {
+  const q = $("hSearch").value.trim().toLowerCase();
+  const list = helpChannels.filter(c => !q || String(c.n).toLowerCase().includes(q)).slice(0, 60);
+  $("hChannels").innerHTML = list.map(c => `
+    <div class="grow">
+      ${c.l ? `<img class="logo" src="${esc(c.l)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}
+      <div><b>${esc(c.n)}</b><div class="orig">${esc(c.g)}</div></div>
+      <button class="ghost" style="padding:8px 10px;font-size:13px" data-hplay="${esc(String(c.k))}" data-name="${esc(c.n)}">▶ Abrir</button>
+    </div>`).join("") || `<div class="empty" style="padding:8px 0">${helpChannels.length ? "Nenhum canal encontrado." : "Sem lista de canais deste servidor."}</div>`;
+  $("hChannels").querySelectorAll("[data-hplay]").forEach(b => b.onclick = () => sendCmd("play_channel", { key: b.dataset.hplay, name: b.dataset.name }, "Abrir " + b.dataset.name));
+}
+async function sendCmd(command, payload, label) {
+  if (!helpDev) return;
+  const { error } = await db.from("device_commands").insert({ device_id: helpDev.device_id, command, payload: payload || {} });
+  if (error) return msg($("hMsg"), "Erro: " + error.message + (error.message.includes("device_commands") ? " (falta correr o SQL da assistência)" : ""), true);
+  msg($("hMsg"), "✓ Enviado: " + label);
+}
+$("hSearch").oninput = renderHelpChannels;
+$("hBack").onclick = () => { show("main"); loadDevices(); };
+$("hReload").onclick = () => sendCmd("reload", {}, "Recarregar lista de canais");
+$("hUpdate").onclick = () => sendCmd("update", {}, "Atualizar a app");
+$("hPin").onclick = () => { if (confirm("Apagar o PIN de adultos deste aparelho?")) sendCmd("clear_pin", {}, "Apagar PIN"); };
+$("hSpeed").onclick = () => sendCmd("speed", {}, "Testar velocidade (o resultado aparece na lista daqui a uns segundos)");
+$("hSend").onclick = () => {
+  const t = $("hText").value.trim(); if (!t) return msg($("hMsg"), "Escreve a mensagem", true);
+  sendCmd("message", { text: t.slice(0, 1000) }, "Mensagem"); $("hText").value = "";
+};
 $("devOnlyOn").onchange = renderDevices;
 setInterval(() => { if (!$("devCard").classList.contains("hidden") && !$("appView").classList.contains("hidden")) loadDevices(); }, 30000);
 
@@ -428,6 +546,8 @@ function show(view) {   // "main" | "groups" | "channels"
   $("logoutBtn").classList.toggle("hidden", view !== "main");
   $("groupsView").classList.toggle("hidden", view !== "groups");
   $("chView").classList.toggle("hidden", view !== "channels");
+  $("cgView").classList.toggle("hidden", view !== "custom");
+  $("helpView").classList.toggle("hidden", view !== "help");
   window.scrollTo({ top: 0 });
 }
 function showMain(v) { show(v ? "main" : "groups"); }
@@ -456,6 +576,7 @@ async function loadGroups() {
   const pc = await db.from("provider_channels").select("data").eq("provider_id", id).maybeSingle();
   gChannels = (pc.data && Array.isArray(pc.data.data)) ? pc.data.data : [];
   renderGroups();
+  loadCustomGroups();
 }
 
 function renderGroups() {
@@ -581,6 +702,103 @@ $("cSave").onclick = async () => {
     if (error) return msg($("cMsg"), "Erro: " + error.message, true);
   }
   msg($("cMsg"), "Guardado ✓ Os clientes veem as alterações na próxima vez que entrarem.");
+};
+
+// ---------- Grupos personalizados ----------
+let cgRows = [], cgEdit = null, cgKeys = [];
+const chByKey = () => Object.fromEntries(gChannels.map(c => [String(c.k), c]));
+
+async function loadCustomGroups() {
+  $("cgCard").classList.toggle("hidden", gKind !== "live");
+  if (gKind !== "live") return;
+  const { data, error } = await db.from("custom_groups").select("*").eq("provider_id", gProv).order("position").order("id");
+  if (error) { $("cgList").innerHTML = `<div class="msg err">Falta correr o código SQL dos grupos personalizados no Supabase.</div>`; return; }
+  cgRows = data;
+  $("cgList").innerHTML = data.length ? data.map((g, i) => `
+    <div class="grow ${g.active ? "" : "off"}">
+      <div><b>${esc(g.name)}</b><div class="orig">${(g.channel_keys || []).length} canais${g.active ? "" : " · escondido"}</div></div>
+      <button class="mv" data-cgup="${i}" ${i === 0 ? "disabled" : ""}>▲</button>
+      <button class="mv" data-cgdown="${i}" ${i === data.length - 1 ? "disabled" : ""}>▼</button>
+      <button class="ghost" style="padding:8px 10px;font-size:13px" data-cged="${i}">Editar</button>
+      <button class="danger" style="padding:8px 10px;font-size:13px" data-cgdel="${i}">✕</button>
+    </div>`).join("") : `<div class="empty" style="padding:8px 0">Ainda não criaste grupos.</div>`;
+  const L = $("cgList");
+  L.querySelectorAll("[data-cged]").forEach(b => b.onclick = () => openCustom(cgRows[b.dataset.cged]));
+  L.querySelectorAll("[data-cgdel]").forEach(b => b.onclick = async () => {
+    const g = cgRows[b.dataset.cgdel];
+    if (!confirm(`Apagar o grupo "${g.name}"? Os canais continuam nos grupos originais.`)) return;
+    await db.from("custom_groups").delete().eq("id", g.id); loadCustomGroups();
+  });
+  const swap = async (i, j) => {
+    const a = cgRows[i], b2 = cgRows[j]; if (!a || !b2) return;
+    await db.from("custom_groups").update({ position: j }).eq("id", a.id);
+    await db.from("custom_groups").update({ position: i }).eq("id", b2.id);
+    loadCustomGroups();
+  };
+  L.querySelectorAll("[data-cgup]").forEach(b => b.onclick = () => swap(+b.dataset.cgup, +b.dataset.cgup - 1));
+  L.querySelectorAll("[data-cgdown]").forEach(b => b.onclick = () => swap(+b.dataset.cgdown, +b.dataset.cgdown + 1));
+}
+
+function openCustom(g) {
+  if (!gChannels.length) { alert("Ainda não há lista de canais deste servidor. Entra uma vez na app com este servidor."); return; }
+  cgEdit = g; cgKeys = g ? (g.channel_keys || []).map(String) : [];
+  $("cgTitle").textContent = g ? "Editar " + g.name : "Novo grupo personalizado";
+  $("cgName").value = g ? g.name : ""; $("cgActive").checked = g ? g.active : true;
+  $("cgSearch").value = ""; msg($("cgMsg"), "");
+  const groups = [...new Set(gChannels.map(c => c.g))];
+  $("cgFrom").innerHTML = `<option value="">Todos os grupos</option>` + groups.map(x => `<option>${esc(x)}</option>`).join("");
+  show("custom"); renderCgSel(); renderCgAvail();
+}
+
+function renderCgSel() {
+  const by = chByKey();
+  $("cgCount").textContent = cgKeys.length;
+  $("cgSel").innerHTML = cgKeys.length ? cgKeys.map((k, i) => {
+    const c = by[k] || { n: "(canal já não existe)", g: "" };
+    return `<div class="grow">
+      ${c.l ? `<img class="logo" src="${esc(c.l)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}
+      <div><b>${i + 1}. ${esc(c.n)}</b><div class="orig">${esc(c.g)}</div></div>
+      <button class="mv" data-sup="${i}" ${i === 0 ? "disabled" : ""}>▲</button>
+      <button class="mv" data-sdown="${i}" ${i === cgKeys.length - 1 ? "disabled" : ""}>▼</button>
+      <button class="mv" data-sdel="${i}" style="color:var(--danger)">✕</button>
+    </div>`;
+  }).join("") : `<div class="empty" style="padding:8px 0">Ainda sem canais. Adiciona em baixo.</div>`;
+  const L = $("cgSel");
+  const mv = (i, j) => { if (j < 0 || j >= cgKeys.length) return; [cgKeys[i], cgKeys[j]] = [cgKeys[j], cgKeys[i]]; renderCgSel(); };
+  L.querySelectorAll("[data-sup]").forEach(b => b.onclick = () => mv(+b.dataset.sup, +b.dataset.sup - 1));
+  L.querySelectorAll("[data-sdown]").forEach(b => b.onclick = () => mv(+b.dataset.sdown, +b.dataset.sdown + 1));
+  L.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => { cgKeys.splice(+b.dataset.sdel, 1); renderCgSel(); renderCgAvail(); });
+}
+
+function renderCgAvail() {
+  const q = $("cgSearch").value.trim().toLowerCase(), from = $("cgFrom").value;
+  const chosen = new Set(cgKeys);
+  const list = gChannels.filter(c => !chosen.has(String(c.k)) && (!from || c.g === from) && (!q || String(c.n).toLowerCase().includes(q)));
+  const shown = list.slice(0, 150);
+  $("cgAvail").innerHTML = (shown.map(c => `
+    <div class="grow">
+      ${c.l ? `<img class="logo" src="${esc(c.l)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}
+      <div><b>${esc(c.n)}</b><div class="orig">${esc(c.g)}</div></div>
+      <button class="mv" data-add="${esc(String(c.k))}" style="color:var(--accent);width:44px">＋</button>
+    </div>`).join("") || `<div class="empty" style="padding:8px 0">Nenhum canal encontrado.</div>`) +
+    (list.length > 150 ? `<div class="msg">A mostrar 150 de ${list.length}. Usa a pesquisa ou escolhe um grupo para encontrar mais.</div>` : "");
+  $("cgAvail").querySelectorAll("[data-add]").forEach(b => b.onclick = () => { cgKeys.push(b.dataset.add); renderCgSel(); renderCgAvail(); });
+}
+$("cgSearch").oninput = renderCgAvail;
+$("cgFrom").onchange = renderCgAvail;
+$("cgNew").onclick = () => openCustom(null);
+$("cgBack").onclick = () => { show("groups"); loadCustomGroups(); };
+$("cgSave").onclick = async () => {
+  const name = $("cgName").value.trim();
+  if (!name) return msg($("cgMsg"), "Dá um nome ao grupo", true);
+  if (!cgKeys.length) return msg($("cgMsg"), "Adiciona pelo menos um canal", true);
+  const row = { provider_id: +gProv, name, channel_keys: cgKeys, active: $("cgActive").checked };
+  const q = cgEdit ? db.from("custom_groups").update(row).eq("id", cgEdit.id)
+                   : db.from("custom_groups").insert({ ...row, position: cgRows.length });
+  const { error } = await q;
+  if (error) return msg($("cgMsg"), "Erro: " + error.message, true);
+  msg($("cgMsg"), "Guardado ✓ Os clientes veem o grupo na próxima vez que abrirem a app.");
+  setTimeout(() => { show("groups"); loadCustomGroups(); }, 900);
 };
 
 refreshView();
