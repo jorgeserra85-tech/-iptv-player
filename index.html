@@ -190,6 +190,11 @@
         <div class="msg" id="hMsg"></div>
       </div>
       <div class="card">
+        <div class="prov-name">🔀 Mudar de servidor</div>
+        <div class="prov-url" style="margin-top:6px">Só mostra os servidores que o cliente já tem guardados neste aparelho.</div>
+        <div id="hProfiles" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
         <div class="prov-name">▶ Abrir um canal neste aparelho</div>
         <input id="hSearch" type="text" placeholder="Pesquisar canal…" autocapitalize="off" style="margin-top:8px">
         <div id="hChannels" style="margin-top:8px"></div>
@@ -482,7 +487,30 @@ async function openHelp(id) {
     helpChannels = (pc.data && Array.isArray(pc.data.data)) ? pc.data.data : [];
   }
   renderHelpChannels();
+  renderHelpProfiles();
   renderDiag();
+}
+
+function renderHelpProfiles() {
+  const d = helpDev || {};
+  const list = Array.isArray(d.profiles) ? d.profiles : [];
+  if (!list.length) {
+    $("hProfiles").innerHTML = `<div class="empty" style="padding:8px 0">Este aparelho ainda não reportou os servidores guardados. Atualize a app do cliente (v8.4 ou superior) e peça-lhe para a abrir.</div>`;
+    return;
+  }
+  $("hProfiles").innerHTML = list.map(p => {
+    const current = String(p.pid) === String(d.provider_id) && String(p.user) === String(d.username);
+    return `<div class="grow">
+      <div><b>${esc(p.name || "Servidor")}</b><div class="orig">${esc(p.user || "")}</div></div>
+      ${current
+        ? `<span style="padding:8px 10px;font-size:13px;color:#8EF5C8">✓ Servidor atual</span>`
+        : `<button class="primary" style="margin-top:0;padding:8px 10px;font-size:13px" data-sw-pid="${esc(String(p.pid))}" data-sw-user="${esc(p.user || "")}" data-sw-name="${esc(p.name || "")}">Mudar para aqui</button>`}
+    </div>`;
+  }).join("");
+  $("hProfiles").querySelectorAll("[data-sw-pid]").forEach(b => b.onclick = () => {
+    if (!confirm(`Mudar este aparelho para "${b.dataset.swName}" (${b.dataset.swUser})?`)) return;
+    sendCmd("switch_profile", { pid: Number(b.dataset.swPid), user: b.dataset.swUser, name: b.dataset.swName }, "Mudar para " + b.dataset.swName);
+  });
 }
 
 function renderDiag() {
