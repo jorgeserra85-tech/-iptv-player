@@ -501,10 +501,10 @@ function renderHelpProfiles() {
   $("hProfiles").innerHTML = list.map(p => {
     const current = String(p.pid) === String(d.provider_id) && String(p.user) === String(d.username);
     return `<div class="grow">
-      <div><b>${esc(p.name || "Servidor")}</b><div class="orig">${esc(p.user || "")}</div></div>
+      <div><b>${esc(p.name || "Servidor")}</b><div class="orig" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.user || "")}</div></div>
       ${current
         ? `<span style="padding:8px 10px;font-size:13px;color:#8EF5C8">✓ Servidor atual</span>`
-        : `<button class="primary" style="margin-top:0;padding:8px 10px;font-size:13px" data-sw-pid="${esc(String(p.pid))}" data-sw-user="${esc(p.user || "")}" data-sw-name="${esc(p.name || "")}">Mudar para aqui</button>`}
+        : `<button class="primary" style="margin-top:0;padding:8px 12px;font-size:13px;width:auto;flex:none;white-space:nowrap" data-sw-pid="${esc(String(p.pid))}" data-sw-user="${esc(p.user || "")}" data-sw-name="${esc(p.name || "")}">Mudar para aqui</button>`}
     </div>`;
   }).join("");
   $("hProfiles").querySelectorAll("[data-sw-pid]").forEach(b => b.onclick = () => {
