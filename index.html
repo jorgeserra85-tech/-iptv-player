@@ -123,7 +123,18 @@
       <input id="devFind" type="text" inputmode="search" placeholder="🔎 Código de assistência ou utilizador" style="margin-top:10px">
       <div id="devByServer" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
       <div class="switch"><input id="devOnlyOn" type="checkbox"> <span>Mostrar só quem está ligado agora</span></div>
+      <div class="switch"><input id="devExpiring" type="checkbox"> <span>Mostrar só quem está a expirar (7 dias ou menos)</span></div>
+      <button class="ghost" id="devWarnExpiring" style="padding:8px 12px;font-size:13px;margin-top:6px">✉️ Avisar quem está a expirar</button>
       <div id="devList" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card" id="statsCard">
+      <div class="top">
+        <div><div class="prov-name">📊 Canais mais vistos</div>
+        <div class="prov-url" id="statsSummary">Contagem desde que o SQL 13 foi aplicado.</div></div>
+        <button class="ghost" id="statsRefresh" style="padding:8px 12px;font-size:13px">Atualizar</button>
+      </div>
+      <div id="statsList" style="margin-top:8px"></div>
     </div>
 
     <div class="card" id="annCard">
@@ -146,6 +157,15 @@
       <input id="recCode" type="password" autocomplete="new-password">
       <button class="primary" id="recSave">Guardar código</button>
       <div class="msg" id="recMsg"></div>
+    </div>
+
+    <div class="card" id="limCard">
+      <div class="prov-name">📵 Limite de aparelhos por conta</div>
+      <div class="prov-url">Quantos aparelhos cada conta (utilizador) pode usar ao mesmo tempo. Os mais antigos ficam; os que passarem do limite são bloqueados na app. <b>0 = sem limite.</b> Para libertar um lugar, apaga um aparelho na lista de Utilizadores.</div>
+      <label>Máximo de aparelhos (0 = sem limite)</label>
+      <input id="limMax" type="number" min="0" max="99" inputmode="numeric" value="0">
+      <button class="primary" id="limSave">Guardar limite</button>
+      <div class="msg" id="limMsg"></div>
     </div>
 
     <!-- Canais de um grupo -->
@@ -276,7 +296,7 @@ async function refreshView() {
   $("loginView").classList.toggle("hidden", !!session);
   $("appView").classList.toggle("hidden", !session);
   $("who").textContent = session ? "Sessão: " + session.user.email : "Gestão de servidores da app";
-  if (session) { loadList(); loadRecovery(); loadDevices(); loadAnn(); }
+  if (session) { loadList(); loadRecovery(); loadLimit(); loadDevices(); loadStats(); loadAnn(); }
 }
 
 $("loginBtn").onclick = async () => {
@@ -387,6 +407,7 @@ function renderDevices() {
 
   let list = $("devOnlyOn").checked ? devRows.filter(isOn) : devRows;
   if (devServer) list = list.filter(d => (d.provider_name || "—") === devServer);
+  if ($("devExpiring").checked) list = list.filter(d => { const x = expDays(d.exp_date); return x !== null && x <= 7; });
   const find = $("devFind").value.trim().toLowerCase();
   if (find) list = list.filter(d => (d.assist_code || "").includes(find) || (d.username || "").toLowerCase().includes(find));
   if (!list.length) { $("devList").innerHTML = `<div class="empty">${devRows.length ? "Ninguém ligado neste momento." : "Ainda ninguém usou a versão nova da app."}</div>`; return; }
@@ -394,13 +415,14 @@ function renderDevices() {
     <div class="dev">
       <span class="dot ${isOn(d) ? "on" : ""}"></span>
       <div style="min-width:0">
-        <div class="who">${esc(d.username || "—")} <span class="meta">@ ${esc(d.provider_name || "")}</span>
+        <div class="who">${d.label ? `<b>${esc(d.label)}</b> · ` : ""}${esc(d.username || "—")} <span class="meta">@ ${esc(d.provider_name || "")}</span>
           ${expBadge(d.exp_date)} ${d.blocked ? `<span class="blk">⛔ Bloqueado</span>` : ""}</div>
         <div class="watch">${isOn(d) ? "▶ " + esc(d.watching || "Na app") : "Visto " + ago(d.last_seen) + (d.watching ? " · " + esc(d.watching) : "")}</div>
         <div class="meta">${esc(d.model || "")} · Android ${esc(d.android || "?")} · app v${esc(d.app_version || "?")}</div>
         <div class="meta">${d.assist_code ? "🔢 Código <b>" + esc(d.assist_code) + "</b>" : ""}
           ${d.speed_mbps != null ? " · 📶 " + (d.speed_mbps < 0 ? "velocidade: falhou" : Number(d.speed_mbps).toFixed(1) + " Mbps") + " (" + ago(d.speed_at) + ")" : ""}</div>
         ${d.last_error ? `<div class="meta" style="color:#FFB4B4">⚠️ ${esc(d.last_error)} (${ago(d.last_error_at)})</div>` : ""}
+        <input type="text" data-devlabel="${esc(d.device_id)}" value="${esc(d.label || "")}" placeholder="✏️ Etiqueta (ex: João - sala)" style="margin-top:6px;padding:6px 8px;font-size:12px;width:100%;box-sizing:border-box">
       </div>
       <div class="acts">
         <button class="primary" style="margin-top:0;padding:6px 10px;font-size:12px" data-help="${esc(d.device_id)}">🛠 Assistência</button>
@@ -412,6 +434,12 @@ function renderDevices() {
     if (!confirm("Apagar este aparelho da lista? (volta a aparecer se a app for usada outra vez)")) return;
     const { error } = await db.from("devices").delete().eq("device_id", b.dataset.dev);
     if (error) alert("Erro: " + error.message); else loadDevices();
+  });
+  $("devList").querySelectorAll("[data-devlabel]").forEach(inp => inp.onchange = async () => {
+    const v = inp.value.trim();
+    const { error } = await db.from("devices").update({ label: v || null }).eq("device_id", inp.dataset.devlabel);
+    if (error) alert("Erro: " + error.message + (error.message.includes("label") ? " (falta correr o SQL 10 da etiqueta)" : ""));
+    else { const d = devRows.find(x => x.device_id === inp.dataset.devlabel); if (d) d.label = v || null; }
   });
 }
 // validade: "dd/mm/aaaa" -> dias que faltam
@@ -468,6 +496,20 @@ $("annSend").onclick = async () => {
 
 $("devRefresh").onclick = loadDevices;
 $("devFind").oninput = renderDevices;
+$("devExpiring").onchange = renderDevices;
+$("devWarnExpiring").onclick = async () => {
+  let targets = devRows.filter(d => { const x = expDays(d.exp_date); return x !== null && x <= 7; });
+  if (devServer) targets = targets.filter(d => (d.provider_name || "—") === devServer);
+  if (!targets.length) return alert("Ninguém a expirar nos próximos 7 dias" + (devServer ? " neste servidor." : "."));
+  const def = "A sua subscrição está a terminar. Contacte-nos para renovar e não ficar sem acesso. Obrigado!";
+  const text = prompt(`Mensagem a enviar a ${targets.length} cliente(s) a expirar (7 dias ou menos):`, def);
+  if (text == null) return;
+  const t = text.trim(); if (!t) return;
+  const rows = targets.map(d => ({ device_id: d.device_id, command: "message", payload: { text: t.slice(0, 1000) } }));
+  const { error } = await db.from("device_commands").insert(rows);
+  if (error) alert("Erro: " + error.message + (error.message.includes("device_commands") ? " (falta correr o SQL da assistência)" : ""));
+  else alert("✓ Mensagem enviada a " + targets.length + " cliente(s). Chega quando abrirem a app (ou já, se estiverem ligados).");
+};
 
 // ---------- Assistência à distância ----------
 let helpDev = null, helpChannels = [];
@@ -586,6 +628,31 @@ async function loadRecovery() {
     ? "✓ Código definido" + (data.updated_at ? " em " + new Date(data.updated_at).toLocaleDateString("pt-PT") : "")
     : "Ainda não há código definido.");
 }
+async function loadStats() {
+  const { data, error } = await db.from("channel_stats").select("provider_id,channel,views,last_at").order("views", { ascending: false }).limit(40);
+  if (error) { $("statsList").innerHTML = `<div class="empty">Falta correr o SQL 13 das estatísticas.</div>`; return; }
+  if (!data || !data.length) { $("statsList").innerHTML = `<div class="empty">Ainda sem visualizações. Aparecem quando os clientes virem canais (app v9.6 ou superior).</div>`; return; }
+  const { data: provs } = await db.from("providers").select("id,name");
+  const pname = {}; (provs || []).forEach(p => pname[p.id] = p.name);
+  $("statsList").innerHTML = data.map((s, i) => `
+    <div class="dev">
+      <div style="min-width:0;flex:1">
+        <div class="who">${i + 1}. ${esc(s.channel)} <span class="meta">@ ${esc(pname[s.provider_id] || "")}</span></div>
+        <div class="meta"><b>${s.views}</b> visualizaç${s.views === 1 ? "ão" : "ões"} · última ${ago(s.last_at)}</div>
+      </div>
+    </div>`).join("");
+}
+$("statsRefresh").onclick = loadStats;
+async function loadLimit() {
+  const { data, error } = await db.from("admin_settings").select("max_devices").eq("id", 1).maybeSingle();
+  if (!error && data && data.max_devices != null) $("limMax").value = data.max_devices;
+}
+$("limSave").onclick = async () => {
+  const n = Math.max(0, Math.min(99, parseInt($("limMax").value) || 0));
+  const { error } = await db.from("admin_settings").upsert({ id: 1, max_devices: n });
+  if (error) return msg($("limMsg"), "Erro: " + error.message + (error.message.includes("max_devices") ? " (falta correr o SQL 12)" : ""), true);
+  msg($("limMsg"), n === 0 ? "✓ Sem limite de aparelhos." : "✓ Limite: " + n + " aparelho(s) por conta.");
+};
 $("recSave").onclick = async () => {
   const code = $("recCode").value.trim();
   if (code.length < 6) return msg($("recMsg"), "O código deve ter pelo menos 6 caracteres", true);
